@@ -1,0 +1,41 @@
+# S-DAM v2 base configuration.
+# All experiment hyperparameters live here so runs are reproducible.
+
+model:
+  seed_dim: 128
+  beta: 8.0                 # Hopfield inverse-temperature (sharp retrieval on unit vectors)
+  write_threshold: 0.1      # initial tau (surprise gate)
+  failure_threshold: 3      # consolidation failures before a new attractor is born
+  max_iter: 3               # Hopfield update iterations
+  use_high_inertia: true    # seeds are nn.Parameter (trained at seed_lr), not frozen buffers
+
+optimizer:
+  seed_lr: 1.0e-6           # high-inertia seeds barely move
+  default_lr: 1.0e-3        # everything else
+
+data:
+  clevr_root: data
+  n_per_category: 500
+  use_synthetic_fallback: true
+
+phase1:
+  corruption_rates: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  n_seeds: 500              # number of patterns stored
+  min_improvement: 0.05     # S-DAM must beat baseline by >= 5% at 30% corruption
+
+phase2:
+  n_same_pairs: 100
+  n_cross_pairs: 100
+  cross_threshold: 0.20
+  same_threshold: 0.40
+  p_value_threshold: 0.01
+
+phase3:
+  spelke_order: [OBJECTNESS, AGENTNESS, NUMEROSITY, GEOMETRY]
+  n_random_orderings: 5
+  capacity_accuracy_threshold: 0.90
+
+output:
+  results_dir: results
+  save_json: true
+  save_plots: true
