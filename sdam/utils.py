@@ -78,8 +78,8 @@ def capacity_search(model, patterns: torch.Tensor, accuracy_threshold: float = 0
             break
         corrupted = corruption_mask(subset, 0.30)
         recovered = model.read(corrupted)
-        sims = cosine_similarity_matrix(recovered, subset).diagonal()
-        accuracy = float((sims > 0.90).float().mean())
+        sims = cosine_similarity_matrix(recovered, subset).diagonal().detach()
+        accuracy = float(sims.mean())
         if accuracy >= accuracy_threshold:
             capacity = n
             n += step

@@ -37,7 +37,7 @@ def _stack_patterns(feats, n_total):
 
 
 def _accuracy(recovered, originals):
-    sims = cosine_similarity_matrix(recovered, originals).diagonal()
+    sims = cosine_similarity_matrix(recovered.detach(), originals).diagonal()
     return float(sims.mean())
 
 

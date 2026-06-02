@@ -42,7 +42,7 @@ def _interference(model: SDAM, a: torch.Tensor, b: torch.Tensor) -> float:
     model.write(b)
     if model.mem.n_stored == 0:
         return 0.0
-    retrieved = model.read(a)
+    retrieved = model.read(a).detach()
     return float(cosine_similarity_matrix(retrieved, b).reshape(-1)[0])
 
 
