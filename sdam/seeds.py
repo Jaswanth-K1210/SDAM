@@ -22,6 +22,23 @@ SPELKE_SYSTEMS = {
     "GEOMETRY": 3,
 }
 
+_SPELKE_PRIOR_SEED = 7777  # dedicated generator seed — never changes
+
+
+def canonical_spelke_directions(n_systems: int, seed_dim: int) -> torch.Tensor:
+    """Return a fixed (n_systems, seed_dim) orthonormal matrix of Spelke priors.
+
+    Uses a dedicated Generator so the result is independent of the global RNG
+    state and identical across every caller (SpelkeSeedLayer, synthetic_features).
+    This is what makes the model seeds align with the synthetic data clusters.
+    """
+    gen = torch.Generator().manual_seed(_SPELKE_PRIOR_SEED)
+    mat = torch.randn(seed_dim, n_systems, generator=gen)   # (D, n)
+    q, r = torch.linalg.qr(mat)                             # q: (D, n) ortho columns
+    d = torch.diag(r)
+    q = q * d.sign().unsqueeze(0)                           # Haar sign correction
+    return q.T                                              # (n, D) ortho rows
+
 
 class SpelkeSeedLayer(nn.Module):
     """Orthonormal seed subspace with projection / residual operations.
@@ -45,9 +62,9 @@ class SpelkeSeedLayer(nn.Module):
         self.n_systems = n_systems
         self.use_high_inertia = use_high_inertia
 
-        # Orthonormal initialization: rows of `seeds` are mutually orthonormal.
-        seeds = torch.empty(n_systems, seed_dim)
-        nn.init.orthogonal_(seeds)
+        # Fixed canonical initialization: same directions as synthetic_features clusters.
+        # Using canonical_spelke_directions ensures seeds align with the data structure.
+        seeds = canonical_spelke_directions(n_systems, seed_dim)
 
         if use_high_inertia:
             self.seeds = nn.Parameter(seeds)

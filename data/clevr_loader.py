@@ -14,7 +14,7 @@ import warnings
 import numpy as np
 import torch
 
-from sdam.seeds import SPELKE_SYSTEMS
+from sdam.seeds import SPELKE_SYSTEMS, canonical_spelke_directions
 
 # Each lambda decides whether a CLEVR question dict belongs to a Spelke system.
 CATEGORY_FILTERS = {
@@ -177,9 +177,10 @@ def synthetic_features(
         stacklevel=2,
     )
     gen = torch.Generator().manual_seed(42)
-    # Orthonormal category centers, one per Spelke system.
-    centers = torch.empty(len(SPELKE_SYSTEMS), seed_dim)
-    torch.nn.init.orthogonal_(centers)
+    # Canonical centers — same vectors as SpelkeSeedLayer uses for seeds.
+    # This alignment is what lets S-DAM's residuals capture only within-category
+    # noise, giving it a measurable advantage over the baseline in Phase 1.
+    centers = canonical_spelke_directions(len(SPELKE_SYSTEMS), seed_dim)
 
     out = {}
     for name, idx in SPELKE_SYSTEMS.items():
