@@ -9,7 +9,6 @@ PASS criterion: S-DAM accuracy >= Baseline + 5% at 30% corruption.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 
@@ -22,7 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from experiments._common import ensure_results_dir, get_features, load_config
+from experiments._common import dump_json, ensure_results_dir, get_features, load_config
 from sdam.hopfield import HopfieldLayer
 from sdam.model import SDAM
 from sdam.utils import corruption_mask, cosine_similarity_matrix, set_all_seeds
@@ -115,8 +114,7 @@ def run() -> dict:
     }
 
     out_dir = ensure_results_dir(cfg)
-    with open(os.path.join(out_dir, "phase1_retrieval.json"), "w") as f:
-        json.dump(results, f, indent=2)
+    dump_json(results, os.path.join(out_dir, "phase1_retrieval.json"))
     _plot(corruption_rates, sdam_mean, sdam_std, base_mean, base_std,
           os.path.join(out_dir, "phase1_accuracy.png"))
     return results

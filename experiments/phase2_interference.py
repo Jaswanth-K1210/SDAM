@@ -18,7 +18,6 @@ paper.
 from __future__ import annotations
 
 import itertools
-import json
 import os
 import sys
 
@@ -30,7 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 
-from experiments._common import ensure_results_dir, get_features, load_config
+from experiments._common import dump_json, ensure_results_dir, get_features, load_config
 from sdam.model import SDAM
 from sdam.utils import cosine_similarity_matrix, mann_whitney_u, set_all_seeds
 
@@ -136,8 +135,7 @@ def run() -> dict:
     }
 
     out_dir = ensure_results_dir(cfg)
-    with open(os.path.join(out_dir, "phase2_interference.json"), "w") as f:
-        json.dump(results, f, indent=2)
+    dump_json(results, os.path.join(out_dir, "phase2_interference.json"))
 
     _boxplot(same_scores, cross_scores, p2, os.path.join(out_dir, "phase2_boxplot.png"))
     return results

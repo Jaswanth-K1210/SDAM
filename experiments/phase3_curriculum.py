@@ -10,7 +10,6 @@ AND beats the random-ordering mean at >= 3 of the 4 stages.
 
 from __future__ import annotations
 
-import json
 import os
 import random as _random
 import sys
@@ -24,7 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from experiments._common import ensure_results_dir, get_features, load_config
+from experiments._common import dump_json, ensure_results_dir, get_features, load_config
 from sdam.model import SDAM
 from sdam.utils import capacity_search, set_all_seeds
 
@@ -101,8 +100,7 @@ def run() -> dict:
     }
 
     out_dir = ensure_results_dir(cfg)
-    with open(os.path.join(out_dir, "phase3_curriculum.json"), "w") as f:
-        json.dump(results, f, indent=2)
+    dump_json(results, os.path.join(out_dir, "phase3_curriculum.json"))
     _plot(spelke_curve, random_mean, random_std, os.path.join(out_dir, "phase3_capacity.png"))
     return results
 
