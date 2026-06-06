@@ -37,7 +37,10 @@ def _extract_sst2_features(cache_path: str) -> dict:
     from transformers import AutoTokenizer, AutoModel
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ds = load_dataset("glue", "sst2", split="train[:3000]")
+    # The legacy "glue" loading script is broken on recent `datasets` versions
+    # (raises HfUriError: "Repository id must be 'namespace/name'"). Use the
+    # canonical namespaced repo instead.
+    ds = load_dataset("nyu-mll/glue", "sst2", split="train[:3000]")
     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
     enc_model = AutoModel.from_pretrained(
         "sentence-transformers/all-MiniLM-L6-v2"

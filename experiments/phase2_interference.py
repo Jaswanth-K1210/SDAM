@@ -204,8 +204,13 @@ def _boxplot_3way(results, modes, p2, path):
     fig, axes = plt.subplots(1, len(modes), figsize=(13, 5), sharey=True)
     for ax, mode in zip(axes, modes):
         r = results[mode]
-        ax.boxplot([r["same_scores"], r["cross_scores"]],
-                   labels=["same", "cross"])
+        # matplotlib >= 3.9 renamed `labels` -> `tick_labels`; support both.
+        try:
+            ax.boxplot([r["same_scores"], r["cross_scores"]],
+                       tick_labels=["same", "cross"])
+        except TypeError:
+            ax.boxplot([r["same_scores"], r["cross_scores"]],
+                       labels=["same", "cross"])
         ax.axhline(p2["same_threshold"], color="green", linestyle="--", lw=0.8)
         ax.axhline(p2["cross_threshold"], color="red", linestyle="--", lw=0.8)
         ax.set_title(f"{mode} seeds\nsame={r['same_mean']:.3f}  cross={r['cross_mean']:.3f}")
