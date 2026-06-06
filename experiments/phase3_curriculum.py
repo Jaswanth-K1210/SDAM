@@ -46,8 +46,16 @@ def run() -> dict:
     p3 = cfg["phase3"]
     feats, synthetic = get_features(cfg)
 
-    spelke_order = p3["spelke_order"]
     acc_thr = p3["capacity_accuracy_threshold"]
+
+    # Resolve the curriculum order against the categories actually present.
+    # CLEVR/synthetic features are keyed by Spelke system names so spelke_order
+    # is used as-is. Real data (e.g. CIFAR-10) uses different class names, so we
+    # fall back to the first N available categories as the curriculum stages.
+    n_stages = len(p3["spelke_order"])
+    spelke_order = [c for c in p3["spelke_order"] if c in feats]
+    if not spelke_order:
+        spelke_order = list(feats.keys())[:n_stages]
 
     def fresh_model():
         return SDAM(
@@ -59,13 +67,15 @@ def run() -> dict:
 
     spelke_curve = _capacity_curve(fresh_model(), feats, spelke_order, acc_thr)
 
-    # Random orderings.
+    # Random orderings — same number of stages as the Spelke curriculum so the
+    # capacity curves are directly comparable.
     categories = list(feats.keys())
     rng = _random.Random(42)
     random_curves = []
     for _ in range(p3["n_random_orderings"]):
         order = categories[:]
         rng.shuffle(order)
+        order = order[:len(spelke_order)]
         random_curves.append(_capacity_curve(fresh_model(), feats, order, acc_thr))
 
     random_arr = np.array(random_curves, dtype=float)  # (n_orderings, 4)

@@ -6,10 +6,18 @@ overlap). Concretely, after storing a pair (A, B) and querying with A:
 
     interference = cosine(read(A), B)
 
-We collect 100 same-category and 100 cross-category interference scores, run a
+We collect same-category and cross-category interference scores, run a
 one-sided Mann-Whitney U test, and check three criteria:
 
     cross mean < 0.20   AND   same mean > 0.40   AND   p < 0.01
+
+3-WAY BASELINE: we run three model variants and compare them:
+    spelke : standard S-DAM with Spelke-seeded orthonormal vectors
+    random : same architecture but random orthonormal seeds
+    none   : seeds zeroed out (pure Hopfield baseline)
+
+The core novelty proof is: Spelke seeds specifically beat random seeds on
+cross-category separation (spelke.cross_mean < random.cross_mean).
 
 RUN THIS BEFORE Phase 1 and Phase 3. If only Phase 2 passes, you still have a
 paper.
@@ -34,6 +42,30 @@ from sdam.model import SDAM
 from sdam.utils import cosine_similarity_matrix, mann_whitney_u, set_all_seeds
 
 
+def _make_model(cfg, mode: str) -> SDAM:
+    """
+    mode: 'spelke' | 'random' | 'none'
+    - spelke: standard S-DAM with Spelke-seeded orthonormal vectors (existing behavior)
+    - random: same architecture but seeds initialized to random orthonormal vectors
+    - none:   seeds zeroed out (projection contributes nothing -- pure Hopfield baseline)
+    """
+    import torch.nn as nn
+    m = SDAM(
+        input_dim=cfg["model"]["seed_dim"],
+        beta=cfg["model"]["beta"],
+        write_threshold=cfg["model"]["write_threshold"],
+        failure_threshold=cfg["model"]["failure_threshold"],
+        use_high_inertia=(mode == "spelke"),
+    )
+    if mode == "random":
+        rand = torch.empty(4, cfg["model"]["seed_dim"])
+        nn.init.orthogonal_(rand)
+        m.ssl.seeds = nn.Parameter(rand)
+    elif mode == "none":
+        m.ssl.seeds = nn.Parameter(torch.zeros(4, cfg["model"]["seed_dim"]))
+    return m
+
+
 def _interference(model: SDAM, a: torch.Tensor, b: torch.Tensor) -> float:
     """Store both patterns, query with A, return cosine(read(A), B)."""
     model.reset_memory()
@@ -45,20 +77,9 @@ def _interference(model: SDAM, a: torch.Tensor, b: torch.Tensor) -> float:
     return float(cosine_similarity_matrix(retrieved, b).reshape(-1)[0])
 
 
-def run() -> dict:
-    set_all_seeds(42)
-    cfg = load_config()
-    p2 = cfg["phase2"]
-    feats, synthetic = get_features(cfg)
+def _measure(model: SDAM, feats: dict, p2: dict):
+    """Collect same-category and cross-category interference scores for one model."""
     categories = list(feats.keys())
-
-    model = SDAM(
-        input_dim=cfg["model"]["seed_dim"],
-        beta=cfg["model"]["beta"],
-        write_threshold=cfg["model"]["write_threshold"],
-        failure_threshold=cfg["model"]["failure_threshold"],
-        use_high_inertia=cfg["model"]["use_high_inertia"],
-    )
 
     # --- Same-category pairs: consecutive patterns within each category ----- #
     n_same = p2["n_same_pairs"]
@@ -79,7 +100,7 @@ def run() -> dict:
         same_scores.append(_interference(model, x[j % (x.shape[0] - 1)], x[j % (x.shape[0] - 1) + 1]))
         ci += 1
 
-    # --- Cross-category pairs: all 6 combinations, spread evenly ------------ #
+    # --- Cross-category pairs: all combinations, spread evenly -------------- #
     n_cross = p2["n_cross_pairs"]
     combos = list(itertools.combinations(range(len(categories)), 2))
     per_combo = max(1, n_cross // len(combos))
@@ -98,57 +119,99 @@ def run() -> dict:
         cross_scores.append(_interference(model, xa[j % xa.shape[0]], xb[j % xb.shape[0]]))
         ci += 1
 
-    same_mean = float(sum(same_scores) / len(same_scores))
-    cross_mean = float(sum(cross_scores) / len(cross_scores))
-    stat, p_value = mann_whitney_u(cross_scores, same_scores)
+    return same_scores, cross_scores
 
-    passed = (
-        cross_mean < p2["cross_threshold"]
-        and same_mean > p2["same_threshold"]
-        and p_value < p2["p_value_threshold"]
-    )
+
+def run() -> dict:
+    set_all_seeds(42)
+    cfg = load_config()
+    p2 = cfg["phase2"]
+    feats, synthetic = get_features(cfg)
+
+    modes = ["spelke", "random", "none"]
+    results = {}
+    for mode in modes:
+        # Re-seed before each model so the random-seed init and pair sampling
+        # are reproducible across modes.
+        set_all_seeds(42)
+        model = _make_model(cfg, mode)
+        same_scores, cross_scores = _measure(model, feats, p2)
+
+        same_mean = float(sum(same_scores) / len(same_scores))
+        cross_mean = float(sum(cross_scores) / len(cross_scores))
+        stat, p_value = mann_whitney_u(cross_scores, same_scores)
+        passed = (
+            cross_mean < p2["cross_threshold"]
+            and same_mean > p2["same_threshold"]
+            and p_value < p2["p_value_threshold"]
+        )
+        results[mode] = {
+            "same_mean": same_mean,
+            "cross_mean": cross_mean,
+            "mann_whitney_stat": stat,
+            "p_value": p_value,
+            "passed": passed,
+            "same_scores": same_scores,
+            "cross_scores": cross_scores,
+        }
+
+    # Overall verdict: Spelke passes AND Spelke specifically beats random seeds
+    # on cross-category separation (the core novelty claim).
+    spelke_beats_random = results["spelke"]["cross_mean"] < results["random"]["cross_mean"]
+    overall_passed = results["spelke"]["passed"] and spelke_beats_random
 
     print("=" * 64)
-    print("PHASE 2 -- Cross-category interference (Lemma 2)")
-    print(f"  data            : {'SYNTHETIC' if synthetic else 'CLEVR'}")
-    print(f"  same  mean      : {same_mean:.4f}  (require > {p2['same_threshold']})")
-    print(f"  cross mean      : {cross_mean:.4f}  (require < {p2['cross_threshold']})")
-    print(f"  Mann-Whitney U  : stat={stat:.1f}  p={p_value:.3e}  (require < {p2['p_value_threshold']})")
-    print(f"  VERDICT         : {'PASSED' if passed else 'FAILED'}")
+    print("PHASE 2 -- Cross-category interference (Lemma 2)  [3-WAY BASELINE]")
+    print(f"  data : {'SYNTHETIC' if synthetic else 'REAL'}")
+    for mode in modes:
+        r = results[mode]
+        verdict = "PASS" if r["passed"] else "FAIL"
+        print(f"[{mode:7s}] same={r['same_mean']:.4f}  cross={r['cross_mean']:.4f}  "
+              f"p={r['p_value']:.2e}  {verdict}")
+    print(f"  spelke beats random (cross) : {spelke_beats_random}")
+    print(f"  VERDICT : {'PASSED' if overall_passed else 'FAILED'}")
     print("=" * 64)
 
-    results = {
+    # Final JSON: per-mode summary plus metadata. Keep top-level passed/synthetic.
+    out = {
         "experiment": "phase2_interference",
         "synthetic": synthetic,
-        "same_mean": same_mean,
-        "cross_mean": cross_mean,
-        "mann_whitney_stat": stat,
-        "p_value": p_value,
+        "spelke_beats_random": spelke_beats_random,
+        "passed": overall_passed,
         "thresholds": {
             "cross_threshold": p2["cross_threshold"],
             "same_threshold": p2["same_threshold"],
             "p_value_threshold": p2["p_value_threshold"],
         },
-        "passed": passed,
-        "same_scores": same_scores,
-        "cross_scores": cross_scores,
     }
+    for mode in modes:
+        r = results[mode]
+        out[mode] = {
+            "same_mean": r["same_mean"],
+            "cross_mean": r["cross_mean"],
+            "p_value": r["p_value"],
+            "passed": r["passed"],
+        }
 
     out_dir = ensure_results_dir(cfg)
-    dump_json(results, os.path.join(out_dir, "phase2_interference.json"))
+    dump_json(out, os.path.join(out_dir, "phase2_interference.json"))
 
-    _boxplot(same_scores, cross_scores, p2, os.path.join(out_dir, "phase2_boxplot.png"))
-    return results
+    _boxplot_3way(results, modes, p2, os.path.join(out_dir, "phase2_3way.png"))
+    return out
 
 
-def _boxplot(same_scores, cross_scores, p2, path):
-    fig, ax = plt.subplots(figsize=(6, 5))
-    ax.boxplot([same_scores, cross_scores], labels=["same-category", "cross-category"])
-    ax.axhline(p2["same_threshold"], color="green", linestyle="--", label=f"same > {p2['same_threshold']}")
-    ax.axhline(p2["cross_threshold"], color="red", linestyle="--", label=f"cross < {p2['cross_threshold']}")
-    ax.set_ylabel("interference  cos(read(A), B)")
-    ax.set_title("Phase 2: residual-encoding interference")
-    ax.legend()
+def _boxplot_3way(results, modes, p2, path):
+    fig, axes = plt.subplots(1, len(modes), figsize=(13, 5), sharey=True)
+    for ax, mode in zip(axes, modes):
+        r = results[mode]
+        ax.boxplot([r["same_scores"], r["cross_scores"]],
+                   labels=["same", "cross"])
+        ax.axhline(p2["same_threshold"], color="green", linestyle="--", lw=0.8)
+        ax.axhline(p2["cross_threshold"], color="red", linestyle="--", lw=0.8)
+        ax.set_title(f"{mode} seeds\nsame={r['same_mean']:.3f}  cross={r['cross_mean']:.3f}")
+        ax.grid(True, axis="y", alpha=0.3)
+    axes[0].set_ylabel("interference  cos(read(A), B)")
+    fig.suptitle("Phase 2: residual-encoding interference (3-way baseline)")
     fig.tight_layout()
     fig.savefig(path, dpi=120)
     plt.close(fig)

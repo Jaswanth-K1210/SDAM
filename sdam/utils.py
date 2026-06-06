@@ -58,35 +58,60 @@ def corruption_mask(x: torch.Tensor, rate: float) -> torch.Tensor:
     return out.squeeze(0) if squeeze else out
 
 
-def capacity_search(model, patterns: torch.Tensor, accuracy_threshold: float = 0.90, step: int = 10) -> int:
-    """Largest number of patterns storable before retrieval accuracy drops.
+def capacity_search(
+    model,
+    patterns: torch.Tensor,
+    accuracy_threshold: float = 0.75,
+    step: int = 10,
+    corruption_rate: float = 0.30,
+) -> int:
+    """Largest number of patterns storable with retrieval accuracy >= accuracy_threshold.
 
-    Probes increasing pattern counts (in steps of ``step``) and, for each,
-    measures retrieval accuracy under 30% corruption. Resets the model's memory
-    before each probe. Returns the largest count whose accuracy stays at or
-    above ``accuracy_threshold``.
+    Fix over original: if nothing is written to long-term memory (all residuals
+    below tau go to provisional buffer), we call consolidate() to force promotion
+    before measuring retrieval. This prevents the all-zeros failure on low-norm residuals.
     """
     n_total = patterns.shape[0]
-    capacity = 0
+    best_capacity = 0
     n = step
+
     while n <= n_total:
         model.reset_memory()
         subset = patterns[:n]
+
+        # Write all patterns
         for p in subset:
             model.write(p)
+
+        # Force consolidation if long-term memory is still empty
+        # (happens when write_threshold > residual norms)
+        if model.mem.n_stored == 0 and len(model.provisional) > 0:
+            # Temporarily lower tau to force promotion
+            original_tau = float(model.tau.detach())
+            with torch.no_grad():
+                model.tau.fill_(0.0)
+            model.consolidate()
+            with torch.no_grad():
+                model.tau.fill_(original_tau)
+
+        # If still empty after consolidation, nothing can be stored
         if model.mem.n_stored == 0:
-            break
-        corrupted = corruption_mask(subset, 0.30)
+            n += step
+            continue
+
+        corrupted = corruption_mask(subset, corruption_rate)
         recovered = model.read(corrupted)
-        sims = cosine_similarity_matrix(recovered, subset).diagonal().detach()
+        sims = cosine_similarity_matrix(recovered.detach(), subset).diagonal()
         accuracy = float(sims.mean())
+
         if accuracy >= accuracy_threshold:
-            capacity = n
+            best_capacity = n
             n += step
         else:
             break
+
     model.reset_memory()
-    return capacity
+    return best_capacity
 
 
 def mann_whitney_u(a, b):

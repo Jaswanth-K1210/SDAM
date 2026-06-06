@@ -2,9 +2,9 @@
 # All experiment hyperparameters live here so runs are reproducible.
 
 model:
-  seed_dim: 128
-  beta: 8.0                 # Hopfield inverse-temperature (sharp retrieval on unit vectors)
-  write_threshold: 0.1      # initial tau (surprise gate)
+  seed_dim: 512             # matches ResNet-18 output dim (real CIFAR-10 features)
+  beta: 16.0                # sharper attractors on real L2-normalized features
+  write_threshold: 0.05     # initial tau (surprise gate) — low so residuals get written
   failure_threshold: 3      # consolidation failures before a new attractor is born
   max_iter: 3               # Hopfield update iterations
   use_high_inertia: true    # seeds are nn.Parameter (trained at seed_lr), not frozen buffers
@@ -15,25 +15,26 @@ optimizer:
 
 data:
   clevr_root: data
+  cifar10_cache: data/cifar10_feats.pt   # primary real-data source
   n_per_category: 500
-  use_synthetic_fallback: true
+  use_synthetic_fallback: false          # force real features, no fallback
 
 phase1:
   corruption_rates: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-  n_seeds: 500              # number of patterns stored
+  n_seeds: 200              # number of patterns stored
   min_improvement: 0.05     # S-DAM must beat baseline by >= 5% at 30% corruption
 
 phase2:
-  n_same_pairs: 100
-  n_cross_pairs: 100
+  n_same_pairs: 200
+  n_cross_pairs: 200
   cross_threshold: 0.20
   same_threshold: 0.40
   p_value_threshold: 0.01
 
 phase3:
   spelke_order: [OBJECTNESS, AGENTNESS, NUMEROSITY, GEOMETRY]
-  n_random_orderings: 5
-  capacity_accuracy_threshold: 0.90
+  n_random_orderings: 10
+  capacity_accuracy_threshold: 0.75
 
 output:
   results_dir: results

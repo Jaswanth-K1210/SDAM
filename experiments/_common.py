@@ -20,26 +20,43 @@ def load_config(path: str = _CONFIG_PATH) -> dict:
 
 
 def get_features(cfg: dict):
-    """Return labeled features, falling back to synthetic data with a warning.
+    """Return labeled features. Priority: CIFAR-10 cache → CLEVR → synthetic fallback.
 
     Returns ``(features_dict, used_synthetic_bool)``.
     """
     data_cfg = cfg["data"]
     seed_dim = cfg["model"]["seed_dim"]
+
+    # Try CIFAR-10 cache first (primary real-data source)
+    cifar_cache = data_cfg.get("cifar10_cache", "data/cifar10_feats.pt")
+    if os.path.exists(cifar_cache):
+        import torch
+        feats = torch.load(cifar_cache, map_location="cpu")
+        # Trim to n_per_category
+        n = data_cfg.get("n_per_category", 500)
+        feats = {k: v[:n] for k, v in feats.items()}
+        print(f"[data] Loaded CIFAR-10 features from cache: {cifar_cache}")
+        return feats, False
+
+    # Try CLEVR
     try:
         feats = load_features(data_cfg["clevr_root"])
         return feats, False
     except FileNotFoundError:
-        if not data_cfg.get("use_synthetic_fallback", True):
-            raise
-        print(
-            "[data] CLEVR features not found -> falling back to SYNTHETIC features. "
-            "(Set data.use_synthetic_fallback=false to forbid this.)"
+        pass
+
+    # Synthetic fallback
+    if not data_cfg.get("use_synthetic_fallback", True):
+        raise RuntimeError(
+            "No real features found (CIFAR-10 cache missing, CLEVR not found) "
+            "and use_synthetic_fallback=false. Run data/cifar10_loader.py first."
         )
-        feats = synthetic_features(
-            n_per_category=data_cfg["n_per_category"], seed_dim=seed_dim, device="cpu"
-        )
-        return feats, True
+    import warnings
+    warnings.warn("Using SYNTHETIC features (no real data found).", UserWarning)
+    feats = synthetic_features(
+        n_per_category=data_cfg["n_per_category"], seed_dim=seed_dim, device="cpu"
+    )
+    return feats, True
 
 
 def ensure_results_dir(cfg: dict) -> str:
