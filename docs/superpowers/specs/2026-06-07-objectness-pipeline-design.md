@@ -45,12 +45,17 @@ Spelke-complete memory."
 shape is *both* the seed direction and the Phase-2 category label, so projecting it out is
 subtle and could go either way. We commit to these interpretations **now**:
 
-**Mechanism design recap:** S-DAM stores `residual = x − proj_shape(x)` and reconstructs
-`read(A) = retrieved_residual + proj_shape(A)`. The shape axis (89×) is the dominant common
-direction that makes patterns interfere; removing it from *storage* should decorrelate stored
-residuals; adding `proj_shape(A)` back at *read* should restore the category signal.
+**Mechanism trace (from sdam/model.py:98-105, verified — do not assume):**
+`read(x) = mem.retrieve(residual(x)) + project(x)`. Retrieval is keyed on `residual(x)` (shape
+removed); the shape component re-added is `project(x)` — **computed from the QUERY x, not from
+memory.** Consequences locked into the design:
+- Phase 1: x is *corrupted* → both the retrieval key and the re-added `project(x)` come from the
+  corrupted input (degraded restoration).
+- Phase 2: x is *clean* A → `project(A)` is A's true shape, **added back by hand** → a low final
+  `cosine(read(A), B)` is partly an artifact of hand-adding A's clean shape, NOT proof of clean
+  recall. This is why Phase 2's final cross-cosine cannot be the verdict (see P2).
 
-**P1 — Phase 1 (retrieval under corruption) is the PRIMARY test.**
+**P1 — Phase 1 (retrieval under corruption) is the SOLE ADJUDICATOR of WORKS/NULL.**
 - PREDICT: objectness-seed accuracy > random-seed ≳ zeroed, **widening as corruption/load rises**,
   because decorrelated residuals reduce cross-talk on the dominant axis.
 - MECHANISM WORKS iff: objectness-seed strictly beats both baselines at moderate-to-high
@@ -60,22 +65,34 @@ residuals; adding `proj_shape(A)` back at *read* should restore the category sig
 - MECHANISM FAILS (honest, publishable null) iff: objectness-seed ≈ random ≈ zeroed. Reported as
   "even a dominant, decodable prior does not improve S-DAM retrieval."
 
-**P2 — Phase 2 (interference, category = dominant shape): COMMITTED DIRECTIONAL prediction +
-confound check (NOT pass/fail).** We measure same-/cross-category cosine **before** residual
-encoding (raw centered features = zeroed baseline) and **after** (objectness-seed).
+**P2 — Phase 2 is a MECHANISTIC DIAGNOSTIC, NOT an adjudicator.** It explains *how* the seed moved
+the geometry behind whatever P1 shows; it does not by itself declare WORKS or NULL. P1 decides.
 
-*Committed prediction of the EFFECT DIRECTION (decided now, before the run):* objectness-seeding
-is predicted to **lower CROSS-category interference** (cleaner retrieval makes `read(A)` closer to
-true A, and a different-shape B then overlaps less) while **PRESERVING same-category similarity**
-(`read(A)=residual+proj_shape(A)` adds the category axis back at read). Net effect: a **wider
-same−cross gap driven by the cross side dropping, NOT by same-category rising.** We explicitly do
-**NOT** predict that objectness-seeding *increases* same-category similarity.
-- EXPECTED (mechanism intact): cross-category cosine DOWN vs zeroed; same-category ≈ preserved.
-- CONFOUND (NOT a success): if same-category similarity **collapses** vs zeroed, residual coding
-  stripped the category axis and read() failed to restore it (retrieval failure). Reported as a
-  confound of using the seed axis as the category — **not** evidence for or against the mechanism;
-  P1 then adjudicates.
-- The before/after table is reported regardless, so the seed's effect is *understood*, not graded.
+*Why not a one-tailed "cross drops" prediction:* shape is the **89× dominant separating axis**, so
+stripping it from storage almost certainly makes the stored residuals of two different-shape items
+**more** similar (the axis that separated them is gone). Two credible, opposite mechanisms exist,
+so we pre-register **two-tailed with both tails interpreted in advance** rather than guess.
+
+*Measure cross- and same-category interference at TWO LEVELS, separately* (this split is what makes
+the two-tailed result interpretable):
+- **STORAGE level (the honest one):** `cosine(r_hat, residual(B))` — does memory recall confuse the
+  stored *residuals* of different-shape items? Not contaminated by re-added shape.
+- **FINAL level:** `cosine(read(A), B)` — full reconstruction. NOTE: in Phase 2 the query is clean,
+  so this re-adds `project(A)` by hand; a low value here is partly that artifact, not clean recall.
+
+*Pre-committed interpretation of the CROSS direction, read at the STORAGE level:*
+- **cross DOWN** → cleaner residual recall / restoration dominates → seed aids separation.
+- **cross UP** (judged the more likely a priori) → stripping the load-bearing separating axis made
+  residuals more confusable in memory → finding: **"seeding a dominant axis can HARM cross-category
+  retrieval because that axis was load-bearing for separation"** — a real, publishable result about
+  *when* core-knowledge seeding backfires.
+- **cross FLAT** → effects cancel → leans NULL (C1).
+
+*Same-category confound lock (unchanged):* if same-category similarity **collapses** vs zeroed at
+the FINAL level, residual coding stripped the category axis and read() failed to restore it
+(retrieval failure) — reported as a confound of seed==category-axis, not a mechanism verdict.
+
+The two-level before/after table is reported regardless of outcome.
 
 ## 3. Why count and layout fail — TWO DISTINCT modes (do not conflate)
 
@@ -122,8 +139,10 @@ do not use it as the dissociation example (count is the clean one).
 - Injected via the existing `m.ssl.seeds = nn.Parameter(...)` path; `sdam/` core untouched.
 
 ### 4.3 Experiments (held-out test split, mean-centered features)
-- **Phase 1:** retrieval accuracy vs corruption rate (0.1–0.9), ≥3 seeds, mean±std, 3-way.
-- **Phase 2:** same-/cross-shape interference, with the **before/after** table from P2.
+- **Phase 1 (adjudicator):** retrieval accuracy vs corruption rate (0.1–0.9), ≥3 seeds, mean±std,
+  3-way (objectness/random/zeroed).
+- **Phase 2 (diagnostic only):** same-/cross-shape interference at **two levels** — STORAGE
+  (`cosine(r_hat, residual(B))`) and FINAL (`cosine(read(A), B)`) — reported per §2-P2, two-tailed.
 
 ### 4.4 Files
 - `experiments/objectness_pipeline.py` (orchestration; reuses probe + sdam modules)
@@ -132,13 +151,17 @@ do not use it as the dissociation example (count is the clean one).
   (pure, known-answer where possible)
 - Colab cell appended to `notebooks/probe_runner.ipynb` (or a new `objectness_runner.ipynb`)
 
-## 5. Honest verdict logic
-- **Mechanism POSITIVE:** P1 satisfied (objectness-seed beats both baselines at ≥0.3 corruption
-  beyond noise) AND P2 shows no confound collapse.
-- **Mechanism NULL (publishable):** P1 shows no advantage. Paper: "a dominant, decodable prior
-  still does not improve S-DAM" — strengthens C1.
-- **Confounded:** P2 collapse — reported as a measurement confound, P1 still adjudicates.
-- No threshold-hacking; predictions above are locked.
+## 5. Honest verdict logic — P1 alone adjudicates; P2 explains
+- **Mechanism POSITIVE:** P1 satisfied — objectness-seed beats *both* baselines at corruption ≥0.3
+  by ≥0.05 mean-cosine AND beyond pooled std (≥3 seeds). Phase 2 (two-level, two-tailed) is then
+  reported to *explain how* (cross down = cleaner recall; cross up = load-bearing-axis harm masked
+  by P1 still winning, etc.).
+- **Mechanism NULL (publishable):** P1 shows no advantage → "a dominant, decodable prior still does
+  not improve S-DAM" (strengthens C1). Phase 2 explains the geometry behind the null.
+- **Phase 2 is never the verdict.** A same-category FINAL-level collapse is flagged as a
+  seed==category-axis confound; a STORAGE-level cross rise is reported as the "seeding a load-bearing
+  axis backfires" finding — but P1 alone says WORKS/NULL.
+- No threshold-hacking; all predictions and bars above are locked before the run.
 
 ## 6. Out of scope
 - Numerosity/geometry pipelines (boundary cases, characterized via the probe only).
