@@ -1,0 +1,26 @@
+# S-DAM feasibility probe configuration. Every gate threshold lives here —
+# no magic numbers in code.
+
+data:
+  clevr_scenes: data/CLEVR_v1.0/scenes/CLEVR_train_scenes.json
+  clevr_images: data/CLEVR_v1.0/images/train
+  max_scenes: 6000
+
+encoder:
+  model: dinov2_vits14
+  dim: 384
+  batch_size: 64
+
+split:
+  train_frac: 0.7
+  seed: 42
+
+gate:
+  decodability_bar: 0.70
+  decodability_min_margin: 0.15
+  variance_combined_bar: 0.10
+  variance_concentration_floor: 2.0
+  # RED shortcut: a (near) collapsed combined span means untestable
+  variance_combined_red: 0.05
+
+ridge_lambda: 1.0

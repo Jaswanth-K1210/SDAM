@@ -1,0 +1,7 @@
+# Probe deps (torch + torchvision assumed present on Colab/A100).
+scikit-learn
+scipy
+numpy
+Pillow
+PyYAML
+matplotlib
