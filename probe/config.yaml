@@ -24,3 +24,16 @@ gate:
   variance_combined_red: 0.05
 
 ridge_lambda: 1.0
+
+# Objectness-only S-DAM pipeline (Milestone 2). P1 (retrieval) adjudicates;
+# Phase 2 (two-level interference) is a diagnostic only.
+objectness_pipeline:
+  beta: 16.0
+  write_threshold: 0.05
+  corruption_rates: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  n_repeats: 3
+  n_store: 1000              # patterns stored for the retrieval test (from test split)
+  n_pairs: 200              # same/cross pairs for the Phase-2 diagnostic
+  p1_min_gain: 0.05         # objectness-seed must beat both baselines by >= this
+  p1_corruption_floor: 0.3  # ... at corruption >= this
+  feature_cache_dir: data/feature_cache
