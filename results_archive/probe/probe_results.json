@@ -1,0 +1,107 @@
+{
+  "experiment": "clevr_feasibility_probe",
+  "verdict": "YELLOW",
+  "passed": false,
+  "spread_degenerate": false,
+  "pass_semantics": "A GREEN verdict means the Spelke factors are DECODABLE and NON-TRIVIAL AXES of the DINOv2-CLEVR feature space -- i.e. the hypothesis is TESTABLE here. It does NOT mean S-DAM will show an effect. The probe gates FEASIBILITY OF TESTING, not truth of the hypothesis.",
+  "shape_proxy_note": "shape->Objectness is a PROXY (object identity), not full Spelke Objectness (permanence/cohesion/solidity). Agentness is intentionally absent (CLEVR has no agents): this is a 3-factor probe.",
+  "cosine": {
+    "raw_mean": 0.8067795060538824,
+    "raw_std": 0.08216193680428042,
+    "raw_p05": 0.6469877771347354,
+    "raw_p95": 0.9129877448878487,
+    "centered_mean": -0.004400231429009344,
+    "centered_std": 0.28292976041427237,
+    "centered_p05": -0.45977136397098667,
+    "centered_p95": 0.4923119203614505
+  },
+  "decodability": {
+    "shape": {
+      "factor": "shape",
+      "balanced_acc": 0.8512903502796009,
+      "permutation_acc": 0.31760978493582637,
+      "margin": 0.5336805653437745,
+      "best_C": 0.01,
+      "class_counts": {
+        "0": 2544,
+        "1": 1934,
+        "2": 1522
+      },
+      "tertile_boundaries": null,
+      "spearman_rho": null,
+      "multivariate_r2": null,
+      "chance": 0.3333333333333333
+    },
+    "count": {
+      "factor": "count",
+      "balanced_acc": 0.8528325471922468,
+      "permutation_acc": 0.32969087700744965,
+      "margin": 0.5231416701847971,
+      "best_C": 0.1,
+      "class_counts": {
+        "0": 2000,
+        "1": 2000,
+        "2": 2000
+      },
+      "tertile_boundaries": [
+        5.0,
+        8.0
+      ],
+      "spearman_rho": 0.9757382958334611,
+      "multivariate_r2": 0.9521314842076595,
+      "chance": 0.3333333333333333
+    },
+    "layout": {
+      "factor": "layout",
+      "balanced_acc": 0.6414328035202871,
+      "permutation_acc": 0.3428352888430044,
+      "margin": 0.2985975146772827,
+      "best_C": 0.1,
+      "class_counts": {
+        "0": 2000,
+        "1": 2000,
+        "2": 2000
+      },
+      "tertile_boundaries": [
+        79.31966969169753,
+        92.97445885833378
+      ],
+      "spearman_rho": 0.7971320970454294,
+      "multivariate_r2": 0.7455661549005561,
+      "chance": 0.3333333333333333
+    }
+  },
+  "variance_gate": {
+    "per_factor": {
+      "shape": 89.21190533392578,
+      "count": 1.0299035696785404,
+      "layout": 0.17291877630166388
+    },
+    "combined": 0.23540145738216206
+  },
+  "verdict_detail": {
+    "verdict": "YELLOW",
+    "n_decodable": 2,
+    "gate_pass": false,
+    "dead_factors": [
+      "count",
+      "layout"
+    ],
+    "combined": 0.23540145738216206,
+    "min_concentration": 0.17291877630166388
+  },
+  "decodable": {
+    "shape": true,
+    "count": true,
+    "layout": false
+  },
+  "config_gate": {
+    "decodability_bar": 0.7,
+    "decodability_min_margin": 0.15,
+    "variance_combined_bar": 0.1,
+    "variance_concentration_floor": 2.0,
+    "variance_combined_red": 0.05
+  },
+  "n_scenes": 6000,
+  "encoder": "dinov2_vits14"
+}
