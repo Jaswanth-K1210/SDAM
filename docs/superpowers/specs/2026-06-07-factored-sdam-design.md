@@ -37,6 +37,16 @@ cleaner retrieval under corruption.
 A WORKS result means *factoring improves Hopfield recall over raw storage*. If factoring buys no
 recall improvement, FactoredSDAM collapses to the baseline. Pre-register it this way.
 
+**Precise mechanism-of-interest (so a WORKS result has meaning, not just "the number went up"):**
+storing the residual (shape removed) spreads the stored patterns out in the **non-shape**
+dimensions, which can give better attractor/basin separation for everything that *isn't* shape;
+meanwhile the scalar channel `c` preserves shape **losslessly**. So the registered hypothesis is:
+
+> *Decorrelated storage improves recall of the non-shape content, while the scalar channel
+> preserves shape losslessly — net better recall than storing the entangled raw pattern `x`.*
+
+A WORKS result is evidence for exactly that statement, nothing vaguer.
+
 ## 2. Architecture (new module `sdam/factored.py`, class `FactoredSDAM`)
 
 Single dominant seed `s` (unit, the held-out objectness/shape direction). For each centered
@@ -55,12 +65,31 @@ Read, given (possibly corrupted) query `x'`:
 `sdam.hopfield.HopfieldLayer` is reused unmodified on (D+1)-dim vectors. `SDAM` is untouched;
 FactoredSDAM is a parallel implementation that imports `HopfieldLayer`.
 
-### 2.1 The channel-scale `w` (implementation risk to control)
-shape is the 89× dominant axis, so `c = x·s` can be large; the c-channel could dominate (or, if
-tiny, vanish from) the Hopfield dot-product similarity. `w` balances the c-channel against the
-residual norm. Default `w` chosen so the c-channel variance ≈ mean residual-dimension variance
-(documented in code). `w` is a config value, not a magic number; we report sensitivity if results
-hinge on it.
+### 2.1 The channel-scale `w` — the integrity-critical parameter (PRE-REGISTERED, not tuned)
+
+shape is the 89× dominant axis, so `c = x·s` is large-magnitude; in the (D+1)-dim Hopfield
+dot-product the c-channel can **dominate** addressing (large `w` → retrieval keys mostly on shape →
+recreates the entangled raw-`x` storage that residual coding was meant to avoid) or **vanish**
+(small `w` → `c` poorly addressed → `c_hat` garbage). There is almost certainly a sweet spot of
+`w` where it "works" — **so `w` MUST NOT be tuned.** Tuning `w` until FactoredSDAM beats baseline is
+threshold-hacking through the back door and would make the result unfalsifiable. Locked rules:
+
+1. **`w` set by a stated principle, before any result.** Default = **variance-matching**:
+   `w` chosen so the c-channel's variance equals the **mean per-dimension variance of the
+   residual** across the stored set. *Justification (committed now):* this makes the shape channel
+   contribute to addressing **proportionally to a single residual dimension** — the neutral choice
+   that treats shape as "one dimension among equals" rather than privileging or suppressing it.
+   This variance-matched `w` is the **primary** configuration; the registered claim is about it.
+
+2. **Sensitivity = a pre-registered ROBUSTNESS check, not a search.** Report results at
+   `w ∈ {0.5×, 1×, 2×}` of the variance-matched value, fixed in advance, **to demonstrate the
+   conclusion is not a scaling artifact** — NOT to pick a winner. The verdict is read off the 1×
+   (variance-matched) value; the 0.5×/2× points only test robustness.
+
+3. **Report the Phase-1 crossover point as a function of `w`** (not just pass/fail). `w` modulates
+   the addressing/partial-fix outcome too: the key includes the corrupted, `w`-scaled c-channel, so
+   larger `w` makes addressing *more* sensitive to corrupted shape at high corruption. If the
+   crossover point moves right as `w` shrinks, that itself confirms the addressing mechanism.
 
 ## 3. Pre-registered predictions — FOUR outcomes (locked before the run)
 
@@ -84,8 +113,13 @@ seeded curve drops below the zeroed baseline) for factored and objectness.
    crossover finding stands.
 4. **STILL-HURTS** — factored reverses at ≈the same point as objectness → the harm is driven by the
    decorrelation itself, not by query-side restoration. Strong negative; also publishable.
+5. **INCONCLUSIVE** *(integrity guard, per review)* — the verdict **flips across the pre-registered
+   `w ∈ {0.5×, 1×, 2×}` range**. Interpretation: the **channel scaling, not the mechanism, drives
+   the result** → reported as inconclusive, NOT as a win at the favorable `w`. Naming this outcome
+   in advance is what prevents accidentally tuning `w` to the nicest number.
 
-No threshold moves post-hoc. The crossover-point metric is reported numerically regardless.
+Verdict is read at the variance-matched (1×) `w`. No threshold moves post-hoc. The crossover-point
+metric is reported numerically, and as a function of `w`, regardless of outcome.
 
 ## 4. Files
 - **Create** `sdam/factored.py` — `FactoredSDAM` (imports `HopfieldLayer`; core untouched).
@@ -105,7 +139,9 @@ No threshold moves post-hoc. The crossover-point metric is reported numerically 
 ## 6. Risks
 - **R1 (most likely per review):** collapse-to-baseline — factoring may not improve recall over raw
   storage. Mitigated: pre-registered as outcome 3; the crossover finding is already banked.
-- **R2:** channel-scale `w` confound (§2.1) — c-channel dominating/vanishing. Mitigated: principled
-  default + sensitivity report.
+- **R2 (integrity-critical):** channel-scale `w` confound (§2.1) — c-channel dominating/vanishing,
+  and the back-door temptation to tune `w` to a win. Mitigated: variance-matched `w` pre-registered
+  with justification as the primary config; robustness check over fixed {0.5×,1×,2×}; and the
+  **INCONCLUSIVE** outcome (§3.5) that fires if the verdict is `w`-dependent. `w` is never tuned.
 - **R3:** corrupted retrieval key (§3 outcome 2) — the fix may only move the crossover right.
   Mitigated: pre-registered as outcome 2, crossover point reported numerically.
