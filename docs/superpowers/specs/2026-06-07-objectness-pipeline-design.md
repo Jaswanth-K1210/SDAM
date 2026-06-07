@@ -28,10 +28,17 @@ associative memory. count is the existence proof (R²=0.95, concentration 1.03×
 gate (`combined>0.10 AND per-factor concentration>2.0`) is the instrument that exposes it.
 
 **C2 — Objectness existence proof:** on the one factor that clears both bars (shape, 89×), a
-3-way test of whether the S-DAM residual mechanism delivers. **SCOPE (state explicitly in
-paper):** this is a *single-factor existence proof*, NOT validation of the four-system Spelke
-architecture. We claim "the mechanism works when the prior aligns with a dominant axis," nothing
-more. Numerosity/geometry are reported as characterized boundary cases, not as system claims.
+3-way test of whether the S-DAM residual mechanism delivers.
+
+**Headline claim (exact wording for the paper — do not inflate):** the contribution is
+(i) *a method* for testing whether core-knowledge seeding helps a residual-coding memory
+(the dual-bar feasibility gate), (ii) *a single-factor proof-of-mechanism* on objectness, and
+(iii) *a dissociation* showing linear decodability is **necessary but not sufficient** for a
+factor to be usable as a memory prior. It does **NOT** validate the four-system Spelke
+architecture: of the four systems, one is absent (Agentness — no agents in CLEVR), one is
+variance-orthogonal (count), one is variance-suppressed (layout), and only one (objectness) is
+exploitable. This is an honest, workshop-grade claim — explicitly **not** "we built
+Spelke-complete memory."
 
 ## 2. PRE-REGISTERED PREDICTIONS (locked BEFORE running — the anti-Rorschach)
 
@@ -47,40 +54,58 @@ residuals; adding `proj_shape(A)` back at *read* should restore the category sig
 - PREDICT: objectness-seed accuracy > random-seed ≳ zeroed, **widening as corruption/load rises**,
   because decorrelated residuals reduce cross-talk on the dominant axis.
 - MECHANISM WORKS iff: objectness-seed strictly beats both baselines at moderate-to-high
-  corruption (≥0.3) by a margin exceeding run-to-run noise (≥3 seeds, report std).
+  corruption (≥0.3) by **≥0.05 mean cosine accuracy AND beyond run-to-run noise** (≥3 seeds,
+  the gain must exceed the pooled std). Both the effect-size floor and the noise check are
+  required — locked now so a 0.01 "win" can't be called a win.
 - MECHANISM FAILS (honest, publishable null) iff: objectness-seed ≈ random ≈ zeroed. Reported as
   "even a dominant, decodable prior does not improve S-DAM retrieval."
 
-**P2 — Phase 2 (interference, category = dominant shape) is the CONFOUND CHECK, not pass/fail.**
-We measure same-/cross-category cosine **before** residual encoding (raw centered features =
-the zeroed baseline) and **after** (objectness-seed), and pre-commit the reading:
-- EXPECTED (mechanism intact): same-category separation is **preserved** after residual
-  encoding — because `read()` adds `proj_shape(A)` back, restoring the category signal. The seed's
-  value shows up as cleaner retrieval/lower cross-category interference, not as a change in raw
-  separation.
-- CONFOUND (NOT a success): if same-category similarity **collapses** under the objectness-seed
-  relative to zeroed, that means residual coding removed the category axis and read() failed to
-  restore it (retrieval failure). We will report this as a confound of using the seed axis as the
-  category, **not** as evidence the mechanism works or fails on interference.
-- This before/after table is reported regardless of outcome, so the seed's effect is *understood*,
-  not read as pass/fail.
+**P2 — Phase 2 (interference, category = dominant shape): COMMITTED DIRECTIONAL prediction +
+confound check (NOT pass/fail).** We measure same-/cross-category cosine **before** residual
+encoding (raw centered features = zeroed baseline) and **after** (objectness-seed).
 
-## 3. Why count/layout fail — stated hypothesis (boundary section)
+*Committed prediction of the EFFECT DIRECTION (decided now, before the run):* objectness-seeding
+is predicted to **lower CROSS-category interference** (cleaner retrieval makes `read(A)` closer to
+true A, and a different-shape B then overlaps less) while **PRESERVING same-category similarity**
+(`read(A)=residual+proj_shape(A)` adds the category axis back at read). Net effect: a **wider
+same−cross gap driven by the cross side dropping, NOT by same-category rising.** We explicitly do
+**NOT** predict that objectness-seeding *increases* same-category similarity.
+- EXPECTED (mechanism intact): cross-category cosine DOWN vs zeroed; same-category ≈ preserved.
+- CONFOUND (NOT a success): if same-category similarity **collapses** vs zeroed, residual coding
+  stripped the category axis and read() failed to restore it (retrieval failure). Reported as a
+  confound of using the seed axis as the category — **not** evidence for or against the mechanism;
+  P1 then adjudicates.
+- The before/after table is reported regardless, so the seed's effect is *understood*, not graded.
 
-Measurement is "low concentration"; the paper must offer a *why*. Pre-stated hypothesis:
+## 3. Why count and layout fail — TWO DISTINCT modes (do not conflate)
 
-> DINOv2's self-supervised objective (view-invariant self-distillation) organizes feature
-> **variance** around appearance / object identity (shape, texture, color). Numerosity and spatial
-> layout are still *encoded* — linearly recoverable (count R²=0.95) — but as **low-variance,
-> distributed** codes spread across many dimensions, because counting and spatial extent are
-> neither what dominates appearance variance nor what the SSL objective rewards. Linear
-> decodability only requires the signal exist in *some* linear combination; concentration requires
-> it *dominate* the variance. SSL appearance features satisfy the former for count, not the latter.
+count and layout fail differently; the paper characterizes them separately or a reviewer catches
+the conflation.
 
-**Falsifiable corollary (report if cheap):** a *k*-dimensional count subspace (top-k ridge /
-PLS directions) should capture more variance than the single count direction but still fall well
-short of shape — confirming "distributed, not concentrated." A count-*supervised* encoder would be
-expected to concentrate it (left as future work, not run here).
+### 3a. count — the clean dissociation: decodable but VARIANCE-ORTHOGONAL
+count is highly decodable (bal_acc 0.853, R²=0.952) yet concentration = **1.03×**, i.e.
+statistically indistinguishable from a random direction (random ≈ 1.0). The count information is
+fully present and linearly recoverable, but it lives in a direction carrying ~average (negligible)
+feature variance — a variance-based memory mechanism structurally cannot exploit it. **This is the
+headline dissociation: decodability is necessary but not sufficient.**
+
+*Stated why:* DINOv2's SSL objective (instance discrimination / view-invariant self-distillation)
+rewards representing *what an object is* (shape/appearance → high variance) over *how many* there
+are (count is task-irrelevant to the SSL objective, so encoded but not amplified). Decodability
+needs the signal in *some* linear combination; concentration needs it to *dominate* the variance.
+
+*Falsifiable corollary (cheap, will run):* a *k*-dim count subspace (top-k ridge/PLS) should
+capture more variance than the single direction but still ≪ shape — confirming "present but
+distributed, not concentrated." A count-*supervised* encoder would be expected to concentrate it
+(future work, not run here).
+
+### 3b. layout — the messier case: WEAKLY decodable AND variance-SUPPRESSED
+layout fails **both** bars: decodability 0.641 is *below* the 0.70 bar (margin 0.299 is real, so
+there is weak signal), and concentration **0.17× is BELOW random** — the layout direction is
+*anti-aligned* with the high-variance axes, not merely orthogonal to them. So layout is a weaker,
+less interpretable case than count: not a clean "decodable-but-unusable" story but "weakly encoded
+and actively variance-suppressed." Characterize it as such — explicitly distinct from count — and
+do not use it as the dissociation example (count is the clean one).
 
 ## 4. Pipeline design
 
