@@ -10,16 +10,121 @@
 
 ---
 
+## What a PASS licenses (read this first)
+
+A GREEN probe means **the Spelke factors are decodable and are non-trivial axes of the
+DINOv2–CLEVR feature space** — i.e. the hypothesis is *testable* here. It does **NOT** mean
+S-DAM will show an effect. The probe gates **feasibility of testing the hypothesis**, not
+**truth of the hypothesis**. This distinction is printed in the script output and stated in
+the JSON so a passing probe never creates false confidence going into the pipeline.
+
 ## Pre-committed gate thresholds (LOCKED — written before any numbers exist)
 
-These are decided now, on purpose, so a marginal result cannot be rationalized into a green light:
+Decided now, on purpose, so a marginal result cannot be rationalized into a green light:
 
-- **Decodability:** per-factor **balanced 3-class accuracy > 0.70** on held-out test (chance ≈ 0.33). For count/layout (continuous) the target is balanced-binned into tertiles so the 0.70 bar means the same thing for all three. Real accuracy must also exceed its **permutation control** by a wide margin.
-- **Combined centered variance-explained:** the three orthonormalized seed directions must span **> 10%** of centered test-feature variance (`trace(UᵀΣ_cU)/trace(Σ_c) > 0.10`; a random 3-D subspace expects ≈ 3/384 ≈ 0.8%).
+- **Spread pre-gate (gates the gate):** the pairwise-cosine distribution on CLEVR is computed
+  and shown (histogram) **first**. If features are degenerate (mean > 0.9 AND std < 0.05 —
+  the CIFAR tight-cluster failure mode), every downstream number is computed in a collapsed
+  space; this is flagged loudly in the report and JSON (`spread_degenerate: true`) before any
+  factor metric is interpreted.
+- **Decodability:** per-factor **balanced 3-class accuracy > 0.70** on held-out test
+  (chance ≈ 0.33). count/layout are balanced-binned into **rank tertiles** so the bar means
+  the same for all three; **tertile boundaries are logged per factor** (catches degenerate
+  binning). Probe = StandardScaler(fit train) → **LogisticRegressionCV** (C ∈ {0.01,0.1,1,10},
+  3-fold on train only). Real accuracy must also exceed its **permutation control** by a wide
+  margin. (CV guards false negatives; permutation guards false positives — both, not either.)
+- **Variance — DUAL bar (both required):**
+  1. **Combined** orthonormalized span > **0.10** of centered test variance
+     (`trace(UᵀΣ_cU)/trace(Σ_c)`; random 3-D ≈ 0.8%) — *necessary*: the subspace the pipeline
+     uses must carry variance.
+  2. **Per-factor floor:** every factor's centered **concentration > 3.0** (3× a random
+     direction) — *sufficient guard*: stops the combined metric hiding a dead factor. If
+     combined passes but a factor's concentration ≈ 1, that factor is dead and it's really a
+     2-factor experiment — surfaced as `dead_factors` and downgraded to YELLOW.
 - **Verdict:**
-  - 🟢 GREEN → both bars cleared → build the pipeline (separate plan).
-  - 🟡 YELLOW → decodable (>0.70) but combined centered variance ≤ 10% → problem #1 is fatal on CLEVR; pivot encoder or write the null.
-  - 🔴 RED → any factor decodability ≤ 0.70 or not above permutation → encoder/mapping problem.
+  - 🟢 GREEN → all decodable > 0.70 (and ≫ permutation) AND combined > 0.10 AND every
+    per-factor concentration > 3.0 → build the pipeline (separate plan).
+  - 🟡 YELLOW → all decodable but combined ≤ 0.10 OR any factor concentration ≤ 3.0 →
+    problem #1 is (partly) fatal on CLEVR; pivot encoder or write the null.
+  - 🔴 RED → any factor decodability ≤ 0.70 → encoder/mapping problem.
+
+## Revisions from design review (v2) — exact code for changed functions
+
+These supersede the inline code in Tasks 4, 5, 8 below; implement these versions.
+
+**Task 4 — `decodability_balanced_acc` (StandardScaler + CV-tuned C) and `tertile_boundaries`:**
+```python
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import balanced_accuracy_score
+
+def tertile_boundaries(y) -> list[float]:
+    """The two cut points used by balanced_tertiles (for logging / degeneracy checks)."""
+    y = np.asarray(y, dtype=np.float64).reshape(-1)
+    return [float(np.quantile(y, 1/3)), float(np.quantile(y, 2/3))]
+
+def decodability_balanced_acc(X_tr, y_tr, X_te, y_te, n_classes,
+                              permute=False, seed=0, Cs=(0.01, 0.1, 1, 10)) -> float:
+    """Balanced held-out accuracy of a StandardScaler→L2-logistic probe with 3-fold
+    CV-tuned C (train only). permute shuffles TRAIN labels (false-positive control)."""
+    X_tr = np.asarray(X_tr, float); X_te = np.asarray(X_te, float)
+    y_tr = np.asarray(y_tr).astype(int); y_te = np.asarray(y_te).astype(int)
+    if permute:
+        y_tr = np.random.default_rng(seed).permutation(y_tr)
+    clf = make_pipeline(
+        StandardScaler(),
+        LogisticRegressionCV(Cs=list(Cs), cv=3, max_iter=3000, scoring="balanced_accuracy"),
+    )
+    clf.fit(X_tr, y_tr)
+    return float(balanced_accuracy_score(y_te, clf.predict(X_te)))
+```
+
+**Task 5 — `regression_direction` (small-λ ridge for a stable direction):**
+```python
+def regression_direction(X, y, ridge: float = 1.0) -> np.ndarray:
+    """Unit direction of the small-λ RIDGE weight vector for scalar target y.
+    Ridge (not OLS) keeps the direction stable under DINOv2 feature collinearity —
+    it is an input to the gate metric, so it must not be noisy."""
+    X = np.asarray(X, float); y = np.asarray(y, float).reshape(-1)
+    Xc = X - X.mean(0); yc = y - y.mean()
+    D = Xc.shape[1]
+    w = np.linalg.solve(Xc.T @ Xc + ridge * np.eye(D), Xc.T @ yc)
+    return w / max(np.linalg.norm(w), 1e-12)
+```
+
+**Task 8 — `probe_verdict` (dual-bar variance gate + per-factor floor):**
+```python
+DECODABILITY_BAR = 0.70
+COMBINED_VARIANCE_BAR = 0.10
+PER_FACTOR_CONCENTRATION_FLOOR = 3.0   # 3x a random direction
+
+def probe_verdict(decodability: dict, combined_centered_variance: float,
+                  per_factor_concentration: dict) -> dict:
+    """Apply the LOCKED dual-bar gate.
+    decodability: {factor: balanced_acc}; per_factor_concentration: {factor: concentration}."""
+    all_decodable = all(v > DECODABILITY_BAR for v in decodability.values())
+    combined_ok = combined_centered_variance > COMBINED_VARIANCE_BAR
+    dead = [f for f, c in per_factor_concentration.items()
+            if c <= PER_FACTOR_CONCENTRATION_FLOOR]
+    if not all_decodable:
+        verdict = "RED"
+    elif combined_ok and not dead:
+        verdict = "GREEN"
+    else:
+        verdict = "YELLOW"
+    return {"verdict": verdict, "passed": verdict == "GREEN",
+            "decodability": decodability,
+            "combined_centered_variance": combined_centered_variance,
+            "per_factor_concentration": per_factor_concentration,
+            "dead_factors": dead}
+```
+
+**Task 8 — orchestration additions:** (a) compute & print pairwise-cosine stats + a histogram
+panel **first**, set `spread_degenerate = (mean>0.9 and std<0.05)`; (b) log `tertile_boundaries`
+per regression factor into the JSON; (c) build `per_factor_concentration` from the centered
+concentration per factor and pass it to `probe_verdict`; (d) print the PASS-semantics line.
+The gate-logic test in Task 8 is updated to the 3-arg `probe_verdict`.
 
 ---
 
@@ -694,13 +799,18 @@ git commit -m "feat(probe): DINOv2 + ViT encoders and CLEVR feature extraction"
 from sdam.probe_metrics import probe_verdict
 
 def test_probe_verdict_gate_logic():
-    # all decodable + combined variance > 0.10 -> GREEN
-    assert probe_verdict({"shape": 0.8, "count": 0.75, "layout": 0.72}, 0.12)["verdict"] == "GREEN"
-    # decodable but low variance -> YELLOW
-    assert probe_verdict({"shape": 0.8, "count": 0.75, "layout": 0.72}, 0.04)["verdict"] == "YELLOW"
-    # a factor below 0.70 -> RED
-    assert probe_verdict({"shape": 0.8, "count": 0.60, "layout": 0.72}, 0.12)["verdict"] == "RED"
-    assert probe_verdict({"shape": 0.8, "count": 0.75, "layout": 0.72}, 0.12)["passed"] is True
+    dec = {"shape": 0.8, "count": 0.75, "layout": 0.72}
+    conc = {"shape": 10.0, "count": 8.0, "layout": 6.0}
+    # all decodable + combined > 0.10 + every per-factor concentration > 3 -> GREEN
+    assert probe_verdict(dec, 0.12, conc)["verdict"] == "GREEN"
+    assert probe_verdict(dec, 0.12, conc)["passed"] is True
+    # decodable but combined variance too low -> YELLOW
+    assert probe_verdict(dec, 0.04, conc)["verdict"] == "YELLOW"
+    # combined passes but one factor is dead (concentration ~1) -> YELLOW + flagged
+    v = probe_verdict(dec, 0.12, {"shape": 10.0, "count": 1.0, "layout": 6.0})
+    assert v["verdict"] == "YELLOW" and v["dead_factors"] == ["count"]
+    # a factor below 0.70 decodability -> RED
+    assert probe_verdict({"shape": 0.8, "count": 0.60, "layout": 0.72}, 0.12, conc)["verdict"] == "RED"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
