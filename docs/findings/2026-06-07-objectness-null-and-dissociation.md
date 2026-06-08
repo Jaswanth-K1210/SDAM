@@ -112,5 +112,48 @@ is small. The seed mostly changes corruption-robustness (§3), not raw separatio
   absent (Agentness — no agents in CLEVR), one variance-orthogonal (count), one variance-suppressed
   (layout), one exploitable-but-with-the-§3-tradeoff (objectness). Workshop-grade, honest.
 
-> This document is the secured floor. The FactoredSDAM experiment (separate spec) may add a
-> positive result on top, but does not alter or supersede these findings.
+## 6. FactoredSDAM (Milestone 3) — PARTIAL FIX, robust across w
+
+Diagnosis from §3 said the high-corruption harm comes from `read()` restoring shape via
+`project(corrupted_query)`. FactoredSDAM tests the fix: store `[residual, w·c]` so the shape
+coefficient `c` is recalled **from memory**, not the query. Verdict read at the variance-matched
+`w* = 0.093`; `w ∈ {0.5×, 1×, 2×}` as a pre-registered robustness check.
+
+**Result: PARTIAL_FIX at all three `w` (robust, not INCONCLUSIVE — the result is the mechanism,
+not a scaling artifact).** At `w=1×`, retrieval accuracy vs plain Hopfield (zeroed):
+
+| corruption | factored | zeroed | objectness | factored − zeroed |
+|---|---|---|---|---|
+| 0.1–0.5 | 0.983→0.971 | 0.960→0.947 | 0.986→0.953 | +0.023…+0.025 |
+| 0.7 | 0.949 | 0.928 | 0.909 | +0.021 |
+| 0.8 | 0.907 | 0.899 | 0.856 | +0.009 |
+| 0.9 | 0.760 | 0.809 | 0.717 | **−0.050** |
+
+- **Fix largely works:** factored is the best method from 0.1–0.8 and pushes the crossover from
+  objectness's **0.558 → 0.815** — storing the coefficient in memory recovers most of the
+  robustness residual coding discarded, confirming the §3 diagnosis end-to-end.
+- **Residual failure (pre-registered outcome #2):** still reverses at 0.9 (−0.050). The retrieval
+  *key* is still built from the corrupted query, so at extreme corruption it mis-addresses —
+  memory restoration fixed *reconstruction*, not *addressing*.
+- **Not WORKS:** the 0.9 reversal, and the gain over plain Hopfield tops at +0.026 (< the locked
+  0.05 floor). A genuine improvement over plain objectness-seeding, with a characterized remaining
+  failure mode.
+- **Honest correction:** spec §2.1.3 guessed the crossover would move right as `w` *shrinks*; it
+  moves right as `w` *grows* (0.807→0.830 across 0.5×→2×). Directional guess wrong; the
+  robustness-across-`w` conclusion holds. Source: `results_archive/factored/factored_pipeline.json`.
+
+## 7. The full arc (paper structure)
+
+1. **Dissociation** — decodability ≠ usability; a prior must be a dominant variance axis (count is
+   R²=0.95 yet 1.03×). The dual-bar gate is the instrument.
+2. **Objectness crossover** — seeding a dominant axis helps clean queries, hurts corrupted ones
+   (crossover 0.56), because shape is restored from the corrupted query.
+3. **FactoredSDAM partial fix** — storing the axis coefficient in memory recovers most of the
+   robustness (crossover 0.56→0.82, best method to 0.8), residual failure traced to corrupted
+   *addressing* (not reconstruction), robust across `w`.
+
+A coherent, mechanistic, honest characterization of *when and why* core-knowledge seeding helps a
+residual-coding associative memory — single-factor (objectness); explicitly not a four-system claim.
+
+> Secured findings. All three results are banked; any further variant (e.g. denoising the
+> retrieval key) is upside on top of this complete arc, and does not supersede it.
